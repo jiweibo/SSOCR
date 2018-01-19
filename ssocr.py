@@ -13,9 +13,10 @@ DIGITS_LOOKUP = {
     (0, 1, 1, 1, 1, 1, 1): 6,
     (1, 1, 0, 0, 0, 1, 0): 7,
     (1, 1, 1, 1, 1, 1, 1): 8,
-    (1, 1, 1, 0, 1, 1, 1): 9
+    (1, 1, 1, 0, 1, 1, 1): 9,
+    (0, 0, 0, 0, 0, 0, 1): '-'
 }
-H_W_Ratio = 1.8
+H_W_Ratio = 1.9
 THRESHOLD = 35
 arc_tan_theta = 6.0  # 数码管倾斜角度
 crop_y0 = 215
@@ -30,13 +31,14 @@ parser.add_argument('-d', '--is_debug', action='store_const', const=True, help='
 
 
 def load_image(path, show=False):
+    # todo: crop image and clear dc and ac signal
     gray_img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
     h, w = gray_img.shape
     # crop_y0 = 0 if h <= crop_y0_init else crop_y0_init
     # crop_y1 = h if h <= crop_y1_init else crop_y1_init
     # crop_x0 = 0 if w <= crop_x0_init else crop_x0_init
     # crop_x1 = w if w <= crop_x1_init else crop_x1_init
-    gray_img = gray_img[crop_y0:crop_y1, crop_x0:crop_x1]
+    # gray_img = gray_img[crop_y0:crop_y1, crop_x0:crop_x1]
     blurred = cv2.GaussianBlur(gray_img, (7, 7), 0)
     if show:
         cv2.imshow('gray_img', gray_img)
@@ -66,7 +68,7 @@ def helper_extract(one_d_array, threshold=20):
     flag = 0
     temp = 0
     for i in range(len(one_d_array)):
-        if one_d_array[i] == False:
+        if one_d_array[i] < 8 * 255:
             if flag > threshold:
                 start = i - flag
                 end = i
@@ -102,7 +104,7 @@ def find_digits_positions(img, reserved_threshold=20):
 
     digits_positions = []
     img_array = np.sum(img, axis=0)
-    horizon_position = helper_extract(img_array, threshold=reserved_threshold * 3)
+    horizon_position = helper_extract(img_array, threshold=reserved_threshold)
     img_array = np.sum(img, axis=1)
     vertical_position = helper_extract(img_array, threshold=reserved_threshold * 4)
     # make vertical_position has only one element
@@ -111,7 +113,6 @@ def find_digits_positions(img, reserved_threshold=20):
     for h in horizon_position:
         for v in vertical_position:
             digits_positions.append(list(zip(h, v)))
-    # todo: minus signal
     assert len(digits_positions) > 0, "Failed to find digits's positions"
 
     return digits_positions
@@ -199,21 +200,28 @@ def recognize_digits_line_method(digits_positions, output_img, input_img):
         roi = input_img[y0:y1, x0:x1]
         h, w = roi.shape
         suppose_W = max(1, int(h / H_W_Ratio))
+
+        # 消除无关符号干扰
+        if x1 - x0 < 50 and cv2.countNonZero(roi) / ((y1 - y0) * (x1 - x0)) < 0.2:
+            continue
+
         # 对1的情况单独识别
         if w < suppose_W / 2:
-            x0 = x0 + w - suppose_W
-            w = suppose_W
+            x0 = max(x0 + w - suppose_W, 0)
             roi = input_img[y0:y1, x0:x1]
+            w = roi.shape[1]
+
         center_y = h // 2
         quater_y_1 = h // 4
         quater_y_3 = quater_y_1 * 3
         center_x = w // 2
         line_width = 5  # line's width
         width = (max(int(w * 0.15), 1) + max(int(h * 0.15), 1)) // 2
+        small_delta = int(h / arc_tan_theta) // 4
         segments = [
             ((w - 2 * width, quater_y_1 - line_width), (w, quater_y_1 + line_width)),
             ((w - 2 * width, quater_y_3 - line_width), (w, quater_y_3 + line_width)),
-            ((center_x - line_width, h - 2 * width), (center_x + line_width, h)),
+            ((center_x - line_width - small_delta, h - 2 * width), (center_x - small_delta + line_width, h)),
             ((0, quater_y_3 - line_width), (2 * width, quater_y_3 + line_width)),
             ((0, quater_y_1 - line_width), (2 * width, quater_y_1 + line_width)),
             ((center_x - line_width, 0), (center_x + line_width, 2 * width)),
@@ -223,28 +231,41 @@ def recognize_digits_line_method(digits_positions, output_img, input_img):
 
         for (i, ((xa, ya), (xb, yb))) in enumerate(segments):
             seg_roi = roi[ya:yb, xa:xb]
-            # plt.imshow(seg_roi)
+            # plt.imshow(seg_roi, 'gray')
             # plt.show()
             total = cv2.countNonZero(seg_roi)
             area = (xb - xa) * (yb - ya) * 0.9
-            # print(total / float(area))
-            if total / float(area) > 0.2:
+            print('prob: ', total / float(area))
+            if total / float(area) > 0.25:
                 on[i] = 1
-        # print(on)
+        print('encode: ', on)
         if tuple(on) in DIGITS_LOOKUP.keys():
             digit = DIGITS_LOOKUP[tuple(on)]
         else:
             digit = '*'
+
         digits.append(digit)
+
+        # 小数点的识别
+        # print('dot signal: ',cv2.countNonZero(roi[h - int(3 * width / 4):h, w - int(3 * width / 4):w]) / (9 / 16 * width * width))
+        if cv2.countNonZero(roi[h - int(3 * width / 4):h, w - int(3 * width / 4):w]) / (9 / 16 * width * width) > 0.65:
+            digits.append('.')
+            cv2.rectangle(output_img,
+                          (x0 + w - int(3 * width / 4), y0 + h - int(3 * width / 4)),
+                          (x1, y1), (0, 128, 0), 2)
+            cv2.putText(output_img, 'dot',
+                        (x0 + w - int(3 * width / 4), y0 + h - int(3 * width / 4) - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 128, 0), 2)
+
         cv2.rectangle(output_img, (x0, y0), (x1, y1), (0, 128, 0), 2)
-        cv2.putText(output_img, str(digit), (x0 - 10, y0 + 10), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 128, 0), 2)
+        cv2.putText(output_img, str(digit), (x0, y0 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 128, 0), 2)
     return digits
 
 
 def main():
     args = parser.parse_args()
-    blurred, gray_img = load_image(args.image_path, show=args.show_image)
-    # blurred, gray_img = load_image(r'images/images/70.bmp', show=True)
+    # blurred, gray_img = load_image(args.image_path, show=args.show_image)
+    blurred, gray_img = load_image(r'images/images/25-.bmp', show=True)
     output = blurred
     dst = preprocess(blurred, THRESHOLD, show=args.show_image)
     digits_positions = find_digits_positions(dst)
