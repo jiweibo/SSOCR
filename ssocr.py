@@ -14,7 +14,7 @@ DIGITS_LOOKUP = {
     (1, 1, 0, 0, 0, 1, 0): 7,
     (1, 1, 1, 1, 1, 1, 1): 8,
     (1, 1, 1, 0, 1, 1, 1): 9,
-    (0, 0, 0, 0, 0, 0, 1): '-'
+    (0, 0, 0, 0, 0, 1, 1): '-'
 }
 H_W_Ratio = 1.9
 THRESHOLD = 35
@@ -235,10 +235,10 @@ def recognize_digits_line_method(digits_positions, output_img, input_img):
             # plt.show()
             total = cv2.countNonZero(seg_roi)
             area = (xb - xa) * (yb - ya) * 0.9
-            print('prob: ', total / float(area))
+            # print('prob: ', total / float(area))
             if total / float(area) > 0.25:
                 on[i] = 1
-        print('encode: ', on)
+        # print('encode: ', on)
         if tuple(on) in DIGITS_LOOKUP.keys():
             digit = DIGITS_LOOKUP[tuple(on)]
         else:
@@ -258,14 +258,14 @@ def recognize_digits_line_method(digits_positions, output_img, input_img):
                         cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 128, 0), 2)
 
         cv2.rectangle(output_img, (x0, y0), (x1, y1), (0, 128, 0), 2)
-        cv2.putText(output_img, str(digit), (x0, y0 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 128, 0), 2)
+        cv2.putText(output_img, str(digit), (x0 + 3, y0 + 10), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 128, 0), 2)
     return digits
 
 
 def main():
     args = parser.parse_args()
-    # blurred, gray_img = load_image(args.image_path, show=args.show_image)
-    blurred, gray_img = load_image(r'images/images/25-.bmp', show=True)
+    blurred, gray_img = load_image(args.image_path, show=args.show_image)
+    # blurred, gray_img = load_image(r'images/images/25-.bmp', show=True)
     output = blurred
     dst = preprocess(blurred, THRESHOLD, show=args.show_image)
     digits_positions = find_digits_positions(dst)
