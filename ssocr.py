@@ -68,7 +68,7 @@ def helper_extract(one_d_array, threshold=20):
     flag = 0
     temp = 0
     for i in range(len(one_d_array)):
-        if one_d_array[i] < 8 * 255:
+        if one_d_array[i] < 12 * 255:
             if flag > threshold:
                 start = i - flag
                 end = i
@@ -202,7 +202,7 @@ def recognize_digits_line_method(digits_positions, output_img, input_img):
         suppose_W = max(1, int(h / H_W_Ratio))
 
         # 消除无关符号干扰
-        if x1 - x0 < 50 and cv2.countNonZero(roi) / ((y1 - y0) * (x1 - x0)) < 0.2:
+        if x1 - x0 < 25 and cv2.countNonZero(roi) / ((y1 - y0) * (x1 - x0)) < 0.2:
             continue
 
         # 对1的情况单独识别
@@ -248,7 +248,7 @@ def recognize_digits_line_method(digits_positions, output_img, input_img):
 
         # 小数点的识别
         # print('dot signal: ',cv2.countNonZero(roi[h - int(3 * width / 4):h, w - int(3 * width / 4):w]) / (9 / 16 * width * width))
-        if cv2.countNonZero(roi[h - int(3 * width / 4):h, w - int(3 * width / 4):w]) / (9 / 16 * width * width) > 0.65:
+        if cv2.countNonZero(roi[h - int(3 * width / 4):h, w - int(3 * width / 4):w]) / (9. / 16 * width * width) > 0.65:
             digits.append('.')
             cv2.rectangle(output_img,
                           (x0 + w - int(3 * width / 4), y0 + h - int(3 * width / 4)),
@@ -265,7 +265,6 @@ def recognize_digits_line_method(digits_positions, output_img, input_img):
 def main():
     args = parser.parse_args()
     blurred, gray_img = load_image(args.image_path, show=args.show_image)
-    # blurred, gray_img = load_image(r'images/images/25-.bmp', show=True)
     output = blurred
     dst = preprocess(blurred, THRESHOLD, show=args.show_image)
     digits_positions = find_digits_positions(dst)
